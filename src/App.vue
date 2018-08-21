@@ -5,26 +5,26 @@
     <h2>Game</h2>
     <div class="game-ip">
       <div class="game-ip__answers">
-        <div class="game-ip__answers__item" v-for="(image, key) in images1" @click="select(image)">
+        <div class="game-ip__answers__item" v-for="image in images1" @click="select(image)">
           <img :src="require(`@/assets/img/${image.img}`)"
                :class="{ right: (image.pair !== null) && image.paired, wrong: (image.pair !== null) && !image.paired }"
                :style="{ cursor: (image.pair == null)?'pointer':'not-allowed' }"
-               :ref="`image-1-${key}`">
+               :ref="`image-1-${image.index}`">
         </div>
       </div>
       <hr>
       <div class="game-ip__answers">
-        <div class="game-ip__answers__item" v-for="(image, key) in images2" @click="select(image)">
+        <div class="game-ip__answers__item" v-for="image in images2" @click="select(image)">
           <img :src="require(`@/assets/img/${image.img}`)"
                :class="{ right: (image.pair !== null) && image.paired, wrong: (image.pair !== null) && !image.paired }"
                :style="{ cursor: (image.pair == null)?'pointer':'not-allowed' }"
-               :ref="`image-2-${key}`">
+               :ref="`image-2-${image.index}`">
         </div>
-        <div id="svgContainer" ref="svgContainer">
-          <svg ref="svg" width="0" height="0" >
-            <path v-for="(line, key) in paired" :ref="`path-${key}`"/>
-          </svg>
-        </div>
+      </div>
+      <div id="svgContainer" ref="svgContainer">
+        <svg ref="svg">
+          <path v-for="line in paired" :ref="`path-${line.key}`" :class="{ right: line.paired, wrong: !line.paired }"/>
+        </svg>
       </div>
     </div>
   </div>
@@ -42,9 +42,9 @@ export default {
           {
             img1: 'eyes.jpeg',
             img2: 'glasses.jpg',
-            paired: true,
-            pair1: 0,
-            pair2: 0,
+            paired: false,
+            pair1: null,
+            pair2: null,
           },
           {
             img1: 'feet.jpg',
@@ -84,8 +84,8 @@ export default {
     paired ({ _data: data  }) {
       const answers = cloneDeep(data.question.answers)
       if (answers) {
-        const filtered = answers.filter(a => (a.pair1 !== null) || (a.pair2 !== null))
-        console.log(filtered)
+        const mapped = answers.map((a, key) => { return { key: key, ...a }})
+        const filtered = mapped.filter(a => (a.pair1 !== null) || (a.pair2 !== null))
         return filtered
       }
       else return []
@@ -160,13 +160,6 @@ export default {
       return (x < 0) ? -x : x
     },
     drawPath (svg, path, startX, startY, endX, endY) {
-      // get the path's stroke width (if one wanted to be  really precize, one could use half the stroke size)
-      let stroke = parseFloat(path.style["stroke-width"])
-      // check if the svg is big enough to draw the path, if not, set heigh/width
-      if (svg.getAttribute("height") <  endY)                 svg.setAttribute("height", endY)
-      if (svg.getAttribute("width" ) < (startX + stroke) )    svg.setAttribute("width", (startX + stroke))
-      if (svg.getAttribute("width" ) < (endX   + stroke) )    svg.setAttribute("width", (endX   + stroke))
-
       var deltaX = (endX - startX) * 0.15
       var deltaY = (endY - startY) * 0.15
       // for further calculations which ever is the shortest distance
@@ -183,11 +176,15 @@ export default {
       }
       // draw tha pipe-like path
       // 1. move a bit down, 2. arch,  3. move a bit to the right, 4.arch, 5. move down to the end
-      path.setAttribute("d",  `M${startX} ${startY} V${(startY + delta)} A${delta} ${delta} 0 0 ${arc1} ${startX + (delta * this.signum(deltaX))} ${startY + (2 * delta)} H${endX - (delta * this.signum(deltaX))} A${delta} ${delta} 0 0 ${arc2} ${endX} ${startY + (3 * delta)} V${endY}`)
+      path.setAttribute("d",  "M"  + startX + " " + startY +
+                              " V" + (parseFloat(startY) + parseFloat(delta)) +
+                              " A" + delta + " " +  delta + " 0 0 " + arc1 + " " + (parseFloat(startX) + parseFloat(delta)*parseFloat(this.signum(deltaX))) + " " + (parseFloat(startY) + 2*parseFloat(delta)) +
+                              " H" + (parseFloat(endX) - parseFloat(delta)*parseFloat(this.signum(deltaX))) +
+                              " A" + delta + " " +  delta + " 0 0 " + arc2 + " " + endX + " " + (parseFloat(startY) + 3*parseFloat(delta)) +
+                              " V" + endY)
     },
     connectElements (svg, path, startElem, endElem) {
       let svgContainer= this.$refs['svgContainer']
-
       // if first element is lower than the second, swap!
       if(startElem.offsetTop > endElem.offsetTop){
         const temp = startElem
@@ -201,24 +198,33 @@ export default {
 
       // calculate path's start (x,y)  coords
       // we want the x coordinate to visually result in the element's mid point
-      const startX = startElem.offsetLeft + 0.5*startElem.outerWidth - svgLeft    // x = left offset + 0.5*width - svg's left offset
-      const startY = startCoord.offsetTop  + startElem.outerHeight - svgTop     // y = top offset + height - svg's top offset
+      const startX = parseFloat(startElem.offsetLeft) + 0.5*parseFloat(startElem.offsetWidth) - parseFloat(svgLeft)    // x = left offset + 0.5*width - svg's left offset
+      const startY = parseFloat(startElem.offsetTop)  + parseFloat(startElem.offsetHeight) - parseFloat(svgTop)     // y = top offset + height - svg's top offset
 
       // calculate path's end (x,y) coords
-      const endX = endElem.offsetLeft + 0.5*endElem.outerWidth - svgLeft
+      const endX = endElem.offsetLeft + 0.5*endElem.offsetWidth - svgLeft
       const endY = endElem.offsetTop - svgTop
 
       // call function for drawing the path
       this.drawPath(svg, path, startX, startY, endX, endY)
-    },
-    resetSVGsize () {
-      this.$refs['svg'].setAttribute("height", "0")
-      this.$refs['svg'].setAttribute("width", "0")
     }
   },
   watch: {
     paired (paired) {
-      console.log(paired)
+      setTimeout(() => {
+        for (const key in paired) {
+          const svg = this.$refs['svg']
+          const path = this.$refs[`path-${paired[key].key}`][0]
+          if (paired[key].pair1 !== null) {
+            const indexStart = this.question.answers.findIndex(a => {
+              return a.img1 == paired[key].img1
+            })
+            const elStart = this.$refs[`image-1-${indexStart}`][0]
+            const elEnd = this.$refs[`image-2-${paired[key].pair1}`][0]
+            this.connectElements(svg, path, elStart, elEnd)
+          }
+        }
+      }, 50)
     }
   },
   mounted () {
@@ -280,17 +286,27 @@ h1, h2 {
 }
 
 #svgContainer {
+  height: 100%;
+  width: 100%;
   z-index: -10;
-  opacity:  0.5;
-  margin:   2.5em 2.5em;
+  opacity:  0.75;
+  margin: 2.5rem;
   position: absolute;
-  background-color: #999;
   top: 0;
   left: 0;
-  path {
-    fill:   none;
-    stroke: #000;
-    stroke-width: 0.7em;
+  svg {
+    width: 100%;
+    height: 100%;
+    path {
+      fill:   none;
+      stroke-width: 7.5px;
+      &.right {
+        stroke: green;
+      }
+      &.wrong {
+        stroke: red;
+      }
+    }
   }
 }
 
